@@ -1,0 +1,22 @@
+# Derleme çıktıları
+*.exe
+*.out
+*.o
+*.obj
+oyun
+oyun.exe
+
+# Oyun kayıt dosyaları
+kayit.txt
+meta.dat
+
+# IDE / editör dosyaları
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+
+# İşletim sistemi dosyaları
+.DS_Store
+Thumbs.db
