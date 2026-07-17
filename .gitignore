@@ -3,8 +3,8 @@
 *.out
 *.o
 *.obj
-oyun
-oyun.exe
+efsane_vadisi
+efsane_vadisi.exe
 
 # Oyun kayıt dosyaları
 kayit.txt

@@ -515,6 +515,23 @@ Dusman dusmanYarat(int kat, DusmanTur turu, Bolge bolge) {
             };
             break;
         }
+
+        // GizliBoss ek güçlendirmesi: %50 daha fazla can/hasar, özel isimlendirme
+        if (turu == DusmanTur::GizliBoss) {
+            d.maksCan = d.can = (int)(d.maksCan * 1.5);
+            d.hasar   = (int)(d.hasar   * 1.5);
+            d.sav     = (int)(d.sav     * 1.3);
+            d.xp      = (int)(d.xp      * 2.0);
+            d.altin   = (int)(d.altin   * 2.5);
+            d.iksirSay = 0;   // Gizli patron iksir kullanmaz
+            // İsmin başına gizli patron etiketi ekle
+            d.ad      = "\xf0\x9f\x94\xae " + d.ad + " [Gizli Patron]";
+            d.aciklama = "Efsanelerde bahsedilen, az kişinin yüzleştiği varlık.";
+            // Her eylemin katsayısını %20 güçlendir
+            for (auto& e : d.eylemler)
+                e.katsayi = (int)(e.katsayi * 1.2);
+        }
+
         return d;
     }
 
@@ -788,10 +805,13 @@ public:
 
     Oyuncu(const std::string& isim, KarSinif s,
            const Esya& sw, const Esya& ar, const MetaVeri& meta)
-        : ad(isim), sinif(s), silah(sw), zirh(ar),
+        : ad(isim), sinif(s),
+          can(0), maksCan(0), mana(0), maksMana(0),
+          temelHas(0), sav(0),
           seviye(1), xp(0), snXp(100), altin(50),
           iksir(2), panzehir(1), yetenekPuani(0), pasifSev(0),
-          aktifAcik(false)
+          aktifAcik(false), kritSans(10),
+          silah(sw), zirh(ar)
     {
         switch (sinif) {
             case KarSinif::Savasci:     maksCan=155; maksMana=28;  temelHas=14; sav=7;  kritSans=10; break;
@@ -883,7 +903,7 @@ public:
     std::string sinifAdi() const {
         switch (sinif) {
             case KarSinif::Savasci:     return "Sava\xc5\x9f\xc3\xa7\xc4\xb1 \xf0\x9f\x9b\xa1\xef\xb8\x8f";
-            case KarSinif::Buyucu:      return "B\xc3\xbcy\xc3\xbcc\xc3\xbc \xf0\x9f\x94\xae";
+            case KarSinif::Buyucu:      return u8"B\u00FCy\u00FCC\u00FC \U0001F52E";
             case KarSinif::Hirsiz:      return "H\xc4\xb1rs\xc4\xb1z \xf0\x9f\x97\xa1\xef\xb8\x8f";
             case KarSinif::Paladin:     return "Paladin \xe2\x9c\x9c\xef\xb8\x8f";
             case KarSinif::Okcu:        return "Ok\xc3\xa7u \xf0\x9f\x8f\xb9";
@@ -1160,6 +1180,38 @@ void ganimetDusur(Oyuncu& o, const Dusman& d) {
         std::cout << SY << "\xe2\x9a\x97\xef\xb8\x8f Malzeme: " << secilenMalz << " x1\n" << RS;
     }
 
+    // GizliBoss → garanti efsanevi ganimet (erken dön)
+    if (d.turu == DusmanTur::GizliBoss) {
+        static const std::string efkt[] = {"vampir","yanan","dondurucu","lanet","kahraman"};
+        bool isSilah = sansBasi(50);
+        Esya efs;
+        efs.nadir  = Nadir::Legendary;
+        efs.sevGer = std::max(1, o.seviye);
+        if (isSilah) {
+            efs.ad     = "\xf0\x9f\x94\xae Gizli Patron Kılıcı";
+            efs.tur    = EsyaTuru::Silah;
+            efs.bHasar = 40 + o.seviye * 3;
+            efs.deger  = 800;
+        } else {
+            efs.ad     = "\xf0\x9f\x94\xae Gizli Patron Zırhı";
+            efs.tur    = EsyaTuru::Zirh;
+            efs.bSav   = 30 + o.seviye * 2;
+            efs.deger  = 800;
+        }
+        efs.ozel = efkt[rng(0,4)];
+        std::cout << "\n" << PSR + BD
+                  << "\xf0\x9f\x94\xae [GİZLİ PATRON GANİMETİ] [Efsanevi] "
+                  << efs.ad << "!\n" << RS;
+        if ((int)o.envanter.size() < o.mEnvanter) {
+            o.envanter.push_back(efs);
+            std::cout << PYE << "\xf0\x9f\x8e\x92 Envantere eklendi.\n" << RS;
+            o.basarimKontrol("esya");
+        } else {
+            std::cout << KR << u8"\u274C \u00C7anta dolu! E\u015Fya al\u0131namad\u0131.\n" << RS;
+        }
+        return;
+    }
+
     // Eşya düşme şansı
     int sSans = ((int)d.turu >= 2) ? 72 : 35;
     if (o.sinif == KarSinif::Hirsiz) sSans = std::min(95, sSans + 20);
@@ -1168,11 +1220,13 @@ void ganimetDusur(Oyuncu& o, const Dusman& d) {
     // Nadir belirle
     int nr = rng(0, 99);
     Nadir nadir;
-    if      ((int)d.turu >= 4 && nr < 12) nadir = Nadir::Legendary;
-    else if ((int)d.turu >= 3 && nr < 30) nadir = Nadir::Epic;
-    else if (nr < 52)                      nadir = Nadir::Rare;
-    else if (nr < 73)                      nadir = Nadir::Uncommon;
-    else                                   nadir = Nadir::Common;
+    // efsaneviAcik sonrası boss'lar da %15 şansla Legendary düşürür
+    if      (d.turu == DusmanTur::GizliBoss)                         nadir = Nadir::Legendary;
+    else if ((int)d.turu >= 3 && nr < 15)                            nadir = Nadir::Legendary;
+    else if ((int)d.turu >= 3 && nr < 35)                            nadir = Nadir::Epic;
+    else if (nr < 52)                                                 nadir = Nadir::Rare;
+    else if (nr < 73)                                                 nadir = Nadir::Uncommon;
+    else                                                              nadir = Nadir::Common;
 
     bool isSilah = sansBasi(50);
     struct ET { std::string ad; int has, sv, deg, sg; };
@@ -1883,11 +1937,27 @@ void zindanKesfet(Oyuncu& o, MetaVeri& meta) {
             break;
         }
 
-        // Düşman türü
+        // Düşman türü — boss katında %10 ihtimalle Gizli Patron çıkar
         DusmanTur dTur = DusmanTur::Normal;
-        if      (aktifKat % 10 == 0) dTur = DusmanTur::Boss;
-        else if (aktifKat % 5  == 0) dTur = DusmanTur::MiniBoss;
-        else if (sansBasi(15))        dTur = DusmanTur::Elite;
+        if (aktifKat % 10 == 0) {
+            if (sansBasi(10))
+                dTur = DusmanTur::GizliBoss;
+            else
+                dTur = DusmanTur::Boss;
+        } else if (aktifKat % 5  == 0) {
+            dTur = DusmanTur::MiniBoss;
+        } else if (sansBasi(15)) {
+            dTur = DusmanTur::Elite;
+        }
+
+        // Gizli Patron duyurusu
+        if (dTur == DusmanTur::GizliBoss) {
+            dcizgi(58);
+            std::cout << PSR + BD
+                      << "  \xf0\x9f\x94\xae G\xc4\xb0ZL\xc4\xb0 PATRON H\xc4\xb0SSED\xc4\xb0L\xc4\xb0YOR...\n"
+                      << "  Efsanelerde bahsedilen varl\xc4\xb1k kendini g\xc3\xb6steriyor!\n" << RS;
+            dcizgi(58);
+        }
 
         Dusman d = dusmanYarat(aktifKat, dTur, secBolge);
 
@@ -1912,12 +1982,21 @@ void zindanKesfet(Oyuncu& o, MetaVeri& meta) {
             break;
         }
 
+        // Gizli Patron yenildi → efsaneviAcik bayrağını aç
+        if (d.turu == DusmanTur::GizliBoss && !meta.efsaneviAcik) {
+            meta.efsaneviAcik = true;
+            meta.kaydet();
+            std::cout << "\n" << PSR + BD
+                      << u8"\U0001F52E EFSANEV\u0130 \u015EANS A\u00C7ILDI!\n"
+                      << u8"  Art\u0131k efsanevi e\u015Fyalar daha s\u0131k d\u00FC\u015Fecek!\n" << RS;
+        }
+
         ++meta.zafer;
         if (meta.zafer >= 3 && !meta.nekAcik) {
             meta.nekAcik = true;
             meta.kaydet();
             std::cout << "\n" << PMJ + BD
-                      << "\xf0\x9f\x92\x80 GİZLİ SINIF AÇILDI: NEKROMANCERl!\n" << RS;
+                      << "\xf0\x9f\x92\x80 G\xc4\xb0ZL\xc4\xb0 SINIF A\xc3\x87ILDI: NEKROMANCERl!\n" << RS;
         }
 
         std::cout << "\n  1. Bir Sonraki Kata İlerle \xf0\x9f\x9a\xaa\n"
